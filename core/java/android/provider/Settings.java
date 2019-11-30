@@ -6389,7 +6389,7 @@ public final class Settings {
          * @hide
          */
         @Readable
-        public static final String SHOW_BATTERY_PERCENT = "status_bar_show_battery_percent";
+        public static final String SHOW_BATTERY_PERCENT = "dummy_show_battery_percent";
 
         /**
          * Whether or not to enable multiple audio focus.
@@ -6642,7 +6642,6 @@ public final class Settings {
             PRIVATE_SETTINGS.add(POINTER_SCALE);
             PRIVATE_SETTINGS.add(LOCK_TO_APP_ENABLED);
             PRIVATE_SETTINGS.add(EGG_MODE);
-            PRIVATE_SETTINGS.add(SHOW_BATTERY_PERCENT);
             PRIVATE_SETTINGS.add(DISPLAY_COLOR_MODE);
             PRIVATE_SETTINGS.add(DISPLAY_COLOR_MODE_VENDOR_HINT);
             PRIVATE_SETTINGS.add(LOCALE_PREFERENCES);
