@@ -67,4 +67,8 @@
          plugged in. -->
     <string name="config_usbFunctionActivity" translatable="false"
             >com.android.systemui/com.android.systemui.usb.UsbFunctionActivity</string>
+
+    <!-- Whether to force enable multi resolution configuration for camera -->
+    <bool name="config_forceMultiResolution">false</bool>
+    
 </resources>
