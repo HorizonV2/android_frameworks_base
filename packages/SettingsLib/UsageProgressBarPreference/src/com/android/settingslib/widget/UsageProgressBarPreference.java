@@ -160,9 +160,7 @@ public class UsageProgressBarPreference extends Preference implements GroupSecti
         holder.setDividerAllowedBelow(false);
 
         final TextView usageSummary = (TextView) holder.findViewById(R.id.usage_summary);
-        if (usageSummary != null && mUsageSummary != null) {
-            usageSummary.setText(enlargeFontOfNumber(mUsageSummary));
-        }
+        usageSummary.setText(mUsageSummary);
 
         final TextView totalSummary = (TextView) holder.findViewById(R.id.total_summary);
         if (totalSummary != null && mTotalSummary != null) {
@@ -217,6 +215,7 @@ public class UsageProgressBarPreference extends Preference implements GroupSecti
             animator.start();
         }
 
+<<<<<<< HEAD
         if (mPercent >= 90) {
             progressBar.setProgressTintList(context.getColorStateList(R.color.battery_full));
             progressBar.setProgressBackgroundTintList(context.getColorStateList(R.color.battery_full));
@@ -234,6 +233,10 @@ public class UsageProgressBarPreference extends Preference implements GroupSecti
             progressBar.setProgressBackgroundTintList(context.getColorStateList(R.color.battery_low));
 >>>>>>> 792c1c5f0e1c (SettingsLib: Redesign and animate Battery and storage progress bars)
         }
+=======
+       progressBar.setProgressTintList(context.getColorStateList(R.color.oos_battery_color));
+       progressBar.setProgressBackgroundTintList(context.getColorStateList(R.color.oos_battery_color));
+>>>>>>> 96d9732b6cc4 (SettingsLib: Rework battery usage bar like OOS)
     }
 
     private CharSequence enlargeFontOfNumber(CharSequence summary) {
