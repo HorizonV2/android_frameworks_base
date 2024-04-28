@@ -6686,6 +6686,14 @@ public final class Settings {
         public static final String MAX_CALL_VOLUME = "max_call_volume";
 
         /**
+         * Whether to unlimit screenrecord filesize
+         * Not for backup - dev option
+         * @hide
+         */
+        @Readable
+        public static final String UNLIMIT_SCREENRECORD = "unlimit_screenrecord";
+
+        /**
          * Stores the default max volume for {@link android.media.AudioSystem.STREAM_VOICE_CALL}
          * see {@link com.android.server.audio.AudioService} for defaults in priority
          * Used as a fallback for the user settings
