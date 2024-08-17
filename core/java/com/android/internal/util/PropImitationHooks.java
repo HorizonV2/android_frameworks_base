@@ -78,6 +78,8 @@ public class PropImitationHooks {
     private static final String PROP_SECURITY_PATCH = "persist.sys.pihooks.security_patch";
     private static final String PROP_FIRST_API_LEVEL = "persist.sys.pihooks.first_api_level";
 
+    private static final String SPOOF_PIHOOKS_PI = "persist.sys.pihooks.pi";
+
     private static final ComponentName GMS_ADD_ACCOUNT_ACTIVITY = ComponentName.unflattenFromString(
             "com.google.android.gms/.auth.uiflows.minutemaid.MinuteMaidActivity");
 
@@ -297,14 +299,9 @@ public class PropImitationHooks {
         }
     }
 
-    private static void setCertifiedPropsForGms() {
-        if (sDisableGmsProps) {
-            dlog("GMS prop imitation is disabled by user");
-            setSystemProperty(PROP_SECURITY_PATCH, Build.VERSION.SECURITY_PATCH);
-            setSystemProperty(PROP_FIRST_API_LEVEL,
-                    Integer.toString(Build.VERSION.DEVICE_INITIAL_SDK_INT));
+    private static void setCertifiedPropsForGms(Context context) {
+        if (!SystemProperties.getBoolean(SPOOF_PIHOOKS_PI, true))
             return;
-        }
 
         if (sCertifiedProps.length == 0) {
             dlog("Certified props are not set");
@@ -395,16 +392,8 @@ public class PropImitationHooks {
     }
 
     public static void onEngineGetCertificateChain() {
-        if (sDisableKeyAttestationBlock) {
-            dlog("Key attestation blocking is disabled by user");
+        if (!SystemProperties.getBoolean(SPOOF_PIHOOKS_PI, true))
             return;
-        }
-
-        // If a keybox is found, don't block key attestation
-        if (KeyProviderManager.isKeyboxAvailable()) {
-            dlog("Key attestation blocking is disabled because a keybox is defined to spoof");
-            return;
-        }
 
         // Check stack for SafetyNet or Play Integrity
         if (isCallerSafetyNet() || sIsFinsky) {
