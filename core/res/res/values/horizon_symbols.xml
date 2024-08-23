@@ -38,8 +38,9 @@
     <!-- Name of a font family to use as regular font. For theming purpose. -->
     <string name="config_regularFontFamily" translatable="false">sans-serif-regular</string>
 
-    <!-- PropImitationHooks -->
+    <!-- Prop/KeyboxImitationHooks -->
     <java-symbol type="array" name="config_certifiedBuildProperties" />
+    <java-symbol type="array" name="config_certifiedKeybox" />
     <java-symbol type="string" name="config_stockFingerprint" />
     <java-symbol type="string" name="config_netflixSpoofModel" />
 
@@ -94,5 +95,5 @@
 
     <!-- Whether to force enable multi resolution configuration for camera -->
     <java-symbol type="bool" name="config_forceMultiResolution" />
-    
+   
 </resources>
