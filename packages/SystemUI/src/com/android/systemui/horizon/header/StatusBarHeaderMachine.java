@@ -16,7 +16,7 @@
  *
  */
 
-package com.android.systemui.crdroid.header;
+package com.android.systemui.horizon.header;
 
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
