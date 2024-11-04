@@ -72,5 +72,8 @@
 
     <!-- Bootleg unneccesary gradient declaration | Just for our shishu bars -->
     <java-symbol type="color" name="bootleg_accent_gradient_end_color" />
+
+    <!-- USB -->
+    <java-symbol type="string" name="config_usbFunctionActivity" />
     
 </resources>

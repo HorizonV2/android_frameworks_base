@@ -62,4 +62,9 @@
 
     <!-- Expected value from fast charging status file  -->
     <string name="config_oemFastChargerStatusValue" translatable="false">1</string>
+
+   <!-- Component name of the activity that allows choosing the usb function when a usb device is
+         plugged in. -->
+    <string name="config_usbFunctionActivity" translatable="false"
+            >com.android.systemui/com.android.systemui.usb.UsbFunctionActivity</string>
 </resources>
