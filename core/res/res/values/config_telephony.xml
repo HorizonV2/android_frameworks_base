@@ -58,13 +58,6 @@
     <integer name="auto_data_switch_availability_stability_time_threshold_millis">10000</integer>
     <java-symbol type="integer" name="auto_data_switch_availability_stability_time_threshold_millis" />
 
-     <!-- Define the bar for switching data back to the default SIM when both SIMs are out of service
-         in milliseconds. A value of 0 means an immediate switch, otherwise for a negative value,
-         the threshold defined by auto_data_switch_availability_stability_time_threshold_millis
-         will be used instead. -->
-    <integer name="auto_data_switch_availability_switchback_stability_time_threshold_millis">150000</integer>
-    <java-symbol type="integer" name="auto_data_switch_availability_switchback_stability_time_threshold_millis" />
-
     <!-- Define the bar of considering the RAT and signal strength advantage of a subscription to be
      stable in milliseconds, where 0 means immediate switch, and negative milliseconds indicates the
      switch base on RAT and signal strength feature is disabled.-->
