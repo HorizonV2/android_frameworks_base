@@ -59,6 +59,10 @@ class ModernShadeCarrierGroupMobileView(
             textAlignment = View.TEXT_ALIGNMENT_VIEW_END
         }
     }
+    
+    fun setTextColor(color: Int) {
+        requireViewById<AutoMarqueeTextView>(R.id.mobile_carrier_text).setTextColor(color)
+    }
 
     companion object {
 
