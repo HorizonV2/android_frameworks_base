@@ -2636,6 +2636,7 @@ public class CentralSurfacesImpl implements CoreStartable, CentralSurfaces {
                     ArcaneIdleManager.executeManager();
                 }
             }
+            com.android.systemui.util.ScrimUtils.getInstance(mContext).onScreenStateChange();
         }
 
         @Override

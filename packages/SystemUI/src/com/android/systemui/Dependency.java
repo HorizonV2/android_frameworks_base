@@ -55,6 +55,8 @@ import com.android.systemui.statusbar.policy.BluetoothController;
 import com.android.systemui.statusbar.policy.DeviceProvisionedController;
 import com.android.systemui.statusbar.window.StatusBarWindowControllerStore;
 import com.android.systemui.tuner.TunerService;
+import com.android.systemui.statusbar.policy.KeyguardStateController;
+import com.android.systemui.statusbar.phone.ScrimController;
 
 import dagger.Lazy;
 
@@ -164,6 +166,8 @@ public class Dependency {
     @Inject Lazy<StatusBarWindowControllerStore> mStatusBarWindowControllerStoreLazy;
     @Inject @Background Lazy<Executor> mBackgroundExecutor;
     @Inject Lazy<ActivityStarter> mActivityStarter;
+    @Inject Lazy<ScrimController> mScrimController;
+    @Inject Lazy<KeyguardStateController> mKeyguardStateController;
 
     @Inject
     public Dependency() {
@@ -211,6 +215,8 @@ public class Dependency {
                 StatusBarWindowControllerStore.class, mStatusBarWindowControllerStoreLazy::get);
         mProviders.put(BACKGROUND_EXECUTOR, mBackgroundExecutor::get);
         mProviders.put(ActivityStarter.class, mActivityStarter::get);
+        mProviders.put(ScrimController.class, mScrimController::get);
+        mProviders.put(KeyguardStateController.class, mKeyguardStateController::get);
         Dependency.setInstance(this);
     }
 
