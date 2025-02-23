@@ -55,6 +55,7 @@ public class VolumeControlTile extends QSTileImpl<BooleanState>
 
     public static final String TILE_SPEC = "volume_control";
     private static final String VOLUME_LEVEL_SETTING = "volume_level";
+    private static final Intent SOUND_SETTINGS = new Intent(Settings.Panel.ACTION_VOLUME);
     private final AudioManager mAudioManager;
     private float mCurrentVolumePercent;
     private int mCurrentVolumeLevel;
@@ -193,13 +194,12 @@ public class VolumeControlTile extends QSTileImpl<BooleanState>
     @Override
     public BooleanState newTileState() {
         BooleanState state = new BooleanState();
-        state.handlesLongClick = false;
         return state;
     }
 
     @Override
     public Intent getLongClickIntent() {
-        return null;
+        return SOUND_SETTINGS;
     }
 
     @Override
