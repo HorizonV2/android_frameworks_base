@@ -31,7 +31,7 @@ import android.provider.Settings;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
-import android.widget.LinearLayout;
+import android.widget.FrameLayout;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 
@@ -45,10 +45,10 @@ import com.android.systemui.res.R;
 import java.util.Collections;
 
 /**
- * {@code LinearLayout} used to show and manipulate a {@link ToggleSeekBar}.
+ * {@code FrameLayout} used to show and manipulate a {@link ToggleSeekBar}.
  *
  */
-public class BrightnessSliderView extends LinearLayout {
+public class BrightnessSliderView extends FrameLayout {
 
     @NonNull
     private TextView mTextPersen;
