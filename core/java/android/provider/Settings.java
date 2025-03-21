@@ -6588,6 +6588,11 @@ public final class Settings {
         public static final String SHOW_APP_VOLUME = "show_app_volume";
 
         /**
+         * @hide
+         */
+        public static final String SHOW_MEDIA_PROGRESS = "show_media_progress";
+
+        /**
          * GameSpace: List of added games by user
          * @hide
          */
