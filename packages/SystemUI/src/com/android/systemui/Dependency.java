@@ -207,7 +207,6 @@ public class Dependency {
         mProviders.put(UserTracker.class, mUserTrackerLazy::get);
         mProviders.put(
                 StatusBarWindowControllerStore.class, mStatusBarWindowControllerStoreLazy::get);
-        mProviders.put(ActivityStarter.class, mActivityStarter::get);
         mProviders.put(BACKGROUND_EXECUTOR, mBackgroundExecutor::get);
 
 
