@@ -49,6 +49,8 @@ import com.android.systemui.statusbar.OnGoingActionProgressGroup;
 import com.android.systemui.statusbar.policy.KeyguardStateController;
 import com.android.systemui.statusbar.util.MediaSessionManagerHelper;
 
+import com.android.internal.util.android.VibrationUtils;
+
 /** Controls the ongoing progress chip based on notifications @LineageExtension */
 public class OnGoingActionProgressController implements NotificationListener.NotificationHandler, KeyguardStateController.Callback {
     private static final String TAG = "OngoingActionProgressController";
@@ -154,6 +156,7 @@ public class OnGoingActionProgressController implements NotificationListener.Not
             } else {
                 openTrackedApp();
             }
+            VibrationUtils.triggerVibration(mContext, 3);
             return true;
         }
 
@@ -162,6 +165,7 @@ public class OnGoingActionProgressController implements NotificationListener.Not
             if (mShowMediaProgress && mMediaSessionHelper.isMediaPlaying()) {
                 toggleMediaPlaybackState();
             }
+            VibrationUtils.triggerVibration(mContext, 4);
             return true;
         }
 
@@ -170,6 +174,7 @@ public class OnGoingActionProgressController implements NotificationListener.Not
             if (mShowMediaProgress && mMediaSessionHelper.isMediaPlaying()) {
                 openMediaApp();
             }
+            VibrationUtils.triggerVibration(mContext, 5);
         }
 
         @Override
