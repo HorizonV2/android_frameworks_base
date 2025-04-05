@@ -6591,6 +6591,11 @@ public final class Settings {
          * @hide
          */
         public static final String SHOW_MEDIA_PROGRESS = "show_media_progress";
+        
+        /**
+         * @hide
+         */
+        public static final String PROGRESS_BAR_OPACITY = "progress_bar_opacity";
 
         /**
          * GameSpace: List of added games by user
