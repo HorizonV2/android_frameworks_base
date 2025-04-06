@@ -56,6 +56,8 @@ public class PropImitationHooks {
     private static final String PACKAGE_GMS = "com.google.android.gms";
     private static final String PACKAGE_GPHOTOS = "com.google.android.apps.photos";
     private static final String PACKAGE_NETFLIX = "com.netflix.mediaclient";
+    private static final String PACKAGE_YOUTUBE = "com.google.android.youtube";
+    private static final String PACKAGE_YOUTUBE_MUSIC = "com.google.android.apps.youtube.music";
 
     private static final String PACKAGE_NEXUSLAUNCHER = "com.google.android.apps.nexuslauncher";
     private static final String PACKAGE_PIXELTHEMES = "com.google.android.apps.customization.pixel";
@@ -130,6 +132,14 @@ public class PropImitationHooks {
             "FINGERPRINT", "google/marlin/marlin:10/QP1A.191005.007.A3/5972272:user/release-keys"
     );
 
+    private static final Map<String, String> sGalaxyS23Props = Map.of(
+	    "DEVICE", "dm1q",
+	    "MANUFACTURER", "samsung",
+	    "BRAND", "samsung",
+	    "MODEL", "SM-S911B",
+	    "FINGERPRINT", "samsung/dm1qxxx/dm1q:13/TP1A.220624.014/S911BXXS3AWF7:user/release-keys"
+    );
+
     private static final Set<String> sNexusFeatures = Set.of(
             "NEXUS_PRELOAD",
             "nexus_preload",
@@ -166,7 +176,7 @@ public class PropImitationHooks {
     private static volatile String sStockFp, sNetflixModel;
 
     private static volatile String sProcessName;
-    private static volatile boolean sIsGms, sIsFinsky, sIsPhotos;
+    private static volatile boolean sIsGms, sIsFinsky, sIsPhotos, sIsYouTube, sIsYouTubeMusic;
 
     public static void setProps(Context context) {
         final String packageName = context.getPackageName();
@@ -191,12 +201,15 @@ public class PropImitationHooks {
         sIsGms = packageName.equals(PACKAGE_GMS) && processName.equals(PROCESS_GMS_UNSTABLE);
         sIsFinsky = packageName.equals(PACKAGE_FINSKY);
         sIsPhotos = packageName.equals(PACKAGE_GPHOTOS);
+	sIsYouTube = packageName.equals(PACKAGE_YOUTUBE);
+	sIsYouTubeMusic = packageName.equals(PACKAGE_YOUTUBE_MUSIC);
 
         /* Set certified properties for GMSCore
          * Set stock fingerprint for ARCore
          * Set Pixel 8 Pro for Google, ASI and GMS device configurator
          * Set Pixel XL for Google Photos
          * Set custom model for Netflix
+	 * Set Samsung Galaxy S23 for YouTube and YouTube Music
          */
 
         switch (processName) {
@@ -252,6 +265,14 @@ public class PropImitationHooks {
                     dlog("Setting model to " + sNetflixModel + " for Netflix");
                     setPropValue("MODEL", sNetflixModel);
                 }
+                return;
+	    case PACKAGE_YOUTUBE:
+                dlog("Spoofing Samsung Galaxy S23 for YouTube");
+                setProps(sGalaxyS23Props);
+                return;
+	    case PACKAGE_YOUTUBE_MUSIC:
+                dlog("Spoofing Samsung Galaxy S23 for YouTube Music");
+                setProps(sGalaxyS23Props);
                 return;
         }
     }
