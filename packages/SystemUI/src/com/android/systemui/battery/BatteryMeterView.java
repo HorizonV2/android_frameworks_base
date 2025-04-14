@@ -744,12 +744,7 @@ public class BatteryMeterView extends LinearLayout implements DarkReceiver {
                 mBatteryIconView.setImageDrawable(mAccessorizedDrawable);
                 mBatteryIconView.setVisibility(View.VISIBLE);
                 break;
-            case BATTERY_STYLE_FULL_CIRCLE:
-                mBatteryIconView.setImageDrawable(mFullCircleDrawable);
-                break;
             case BATTERY_STYLE_CIRCLE:
-            case BATTERY_STYLE_DOTTED_CIRCLE:
-                mCircleDrawable.setMeterStyle(mBatteryStyle);
                 mBatteryIconView.setImageDrawable(mCircleDrawable);
                 mBatteryIconView.setVisibility(View.VISIBLE);
                 break;
