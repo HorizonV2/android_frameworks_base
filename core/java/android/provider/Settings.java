@@ -6522,58 +6522,6 @@ public final class Settings {
          */
 
         /**
-         * Whether to show seconds next to clock in status bar
-         * 0 - hide (default)
-         * 1 - show
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK_SECONDS = "status_bar_clock_seconds";
-
-        /**
-         * Shows custom date before clock time
-         * 0 - No Date
-         * 1 - Small Date
-         * 2 - Normal Date
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK_DATE_DISPLAY = "status_bar_clock_date_display";
-
-        /**
-         * Sets the date string style
-         * 0 - Regular style
-         * 1 - Lowercase
-         * 2 - Uppercase
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK_DATE_STYLE = "status_bar_clock_date_style";
-
-        /**
-         * Position of date
-         * 0 - Left of clock
-         * 1 - Right of clock
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK_DATE_POSITION = "status_bar_clock_date_position";
-
-        /**
-         * Stores the java DateFormat string for the date
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK_DATE_FORMAT = "status_bar_clock_date_format";
-
-        /**
-         * Whether to auto hide clock
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK_AUTO_HIDE = "status_bar_clock_auto_hide";
-
-        /** @hide */
-        public static final String STATUS_BAR_CLOCK_AUTO_HIDE_HDURATION = "status_bar_clock_auto_hide_hduration";
-
-        /** @hide */
-        public static final String STATUS_BAR_CLOCK_AUTO_HIDE_SDURATION = "status_bar_clock_auto_hide_sduration";
-
-        /**
          * Whether to display cross sign for a data disabled connection
          * @hide
          */
