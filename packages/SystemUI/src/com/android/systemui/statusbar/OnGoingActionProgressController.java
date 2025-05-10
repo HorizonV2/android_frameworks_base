@@ -51,12 +51,16 @@ import com.android.systemui.statusbar.util.MediaSessionManagerHelper;
 
 import com.android.internal.util.android.VibrationUtils;
 
-/** Controls the ongoing progress chip based on notifications @LineageExtension */
+import java.util.HashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
 public class OnGoingActionProgressController implements NotificationListener.NotificationHandler, KeyguardStateController.Callback {
     private static final String TAG = "OngoingActionProgressController";
     private static final String ONGOING_ACTION_CHIP_ENABLED = "ongoing_action_chip";
     private static final String SHOW_MEDIA_PROGRESS = "show_media_progress";
     private static final String PROGRESS_BAR_OPACITY = "progress_bar_opacity";
+    private static final String COMPACT_MODE_ENABLED = "compact_progress_mode";
     private static final int SWIPE_THRESHOLD = 100;
     private static final int SWIPE_VELOCITY_THRESHOLD = 100;
     private static final int DEFAULT_OPACITY = 255;
@@ -72,19 +76,32 @@ public class OnGoingActionProgressController implements NotificationListener.Not
     private final MediaSessionManagerHelper mMediaSessionHelper;
 
     private final ProgressBar mProgressBar;
+    private final ProgressBar mCircularProgressBar;
     private final View mProgressRootView;
+    private final View mCompactRootView;
     private final ImageView mIconView;
+    private final ImageView mCompactIconView;
 
+    private final HashMap<String, IconFetcher.AdaptiveDrawableResult> mIconCache = new HashMap<>();
+    
     private boolean mShowMediaProgress = true;
     private boolean mIsTrackingProgress = false;
     private boolean mIsForceHidden = false;
     private boolean mIsEnabled;
+    private boolean mIsCompactModeEnabled = false;
     private int mCurrentProgress = 0;
     private int mCurrentProgressMax = 0;
     private int mProgressBarOpacity = DEFAULT_OPACITY;
     private Drawable mCurrentDrawable = null;
     private String mTrackedNotificationKey;
     private PopupWindow mMediaPopup;
+    private boolean mIsPopupActive = false;
+    private boolean mNeedsFullUiUpdate = true;
+    private boolean mIsViewAttached = false;
+    private boolean mIsExpanded = false;
+    
+    private boolean mUpdatePending = false;
+    private long mLastUpdateTime = 0;
 
     private final GestureDetector mGestureDetector;
     private final Handler mMediaProgressHandler = new Handler(Looper.getMainLooper());
@@ -98,7 +115,21 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         }
     };
 
-    /** Constructor */
+    private final MediaSessionManagerHelper.MediaMetadataListener mMediaMetadataListener = 
+            new MediaSessionManagerHelper.MediaMetadataListener() {
+                @Override
+                public void onMediaMetadataChanged() {
+                    mNeedsFullUiUpdate = true;
+                    requestUiUpdate();
+                }
+
+                @Override
+                public void onPlaybackStateChanged() {
+                    mNeedsFullUiUpdate = true;
+                    requestUiUpdate();
+                }
+            };
+
     public OnGoingActionProgressController(
             Context context, OnGoingActionProgressGroup progressGroup,
             NotificationListener notificationListener,
@@ -119,8 +150,11 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         mSettingsObserver = new SettingsObserver(mHandler);
 
         mProgressBar = progressGroup.progressBarView;
+        mCircularProgressBar = progressGroup.circularProgressBarView;
         mProgressRootView = progressGroup.rootView;
+        mCompactRootView = progressGroup.compactRootView;
         mIconView = progressGroup.iconView;
+        mCompactIconView = progressGroup.compactIconView;
 
         mIconFetcher = new IconFetcher(context);
         mNotificationListener.addNotificationHandler(this);
@@ -128,27 +162,51 @@ public class OnGoingActionProgressController implements NotificationListener.Not
 
         mGestureDetector = new GestureDetector(mContext, new MediaGestureListener());
 
+        mKeyguardStateController.addCallback(this);
+        mNotificationListener.addNotificationHandler(this);
         mSettingsObserver.register();
+        
         mProgressRootView.setOnTouchListener((v, event) -> mGestureDetector.onTouchEvent(event));
-        mMediaSessionHelper.addMediaMetadataListener(new MediaSessionManagerHelper.MediaMetadataListener() {
-            @Override
-            public void onMediaMetadataChanged() {
-                updateViews();
+        mCompactRootView.setOnTouchListener((v, event) -> mGestureDetector.onTouchEvent(event));
+        
+        mCompactRootView.setOnClickListener(v -> {
+            if (mIsCompactModeEnabled && !mIsExpanded) {
+                expandCompactView();
+            } else if (mShowMediaProgress && mMediaSessionHelper.isMediaPlaying()) {
+                showMediaPopup(mProgressRootView);
+            } else {
+                openTrackedApp();
             }
-
-            @Override
-            public void onPlaybackStateChanged() {
-                updateViews();
-            }
+            VibrationUtils.triggerVibration(mContext, 3);
         });
-
-        updateViews();
+        
+        mMediaSessionHelper.addMediaMetadataListener(mMediaMetadataListener);
+        
+        mIsViewAttached = true;
+        updateSettings();
     }
 
-    /** Gesture listener for media controls */
+    private void expandCompactView() {
+        mIsExpanded = true;
+        mCompactRootView.setVisibility(View.GONE);
+        mProgressRootView.setVisibility(View.VISIBLE);
+        
+        mHandler.postDelayed(() -> {
+            if (mIsCompactModeEnabled && mIsExpanded) {
+                mIsExpanded = false;
+                requestUiUpdate();
+            }
+        }, 5000);
+    }
+
     private class MediaGestureListener extends GestureDetector.SimpleOnGestureListener {
         @Override
         public boolean onSingleTapConfirmed(MotionEvent e) {
+            if (mIsCompactModeEnabled && !mIsExpanded) {
+                expandCompactView();
+                return true;
+            }
+            
             if (mShowMediaProgress && mMediaSessionHelper.isMediaPlaying()) {
                 showMediaPopup(mProgressRootView);
             } else {
@@ -194,44 +252,163 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         }
     }
 
-    /** Updates the UI based on current state */
+    private void requestUiUpdate() {
+        long currentTime = System.currentTimeMillis();
+        if (!mUpdatePending && (currentTime - mLastUpdateTime > DEBOUNCE_DELAY_MS)) {
+            mUpdatePending = false;
+            mLastUpdateTime = currentTime;
+            updateViews();
+        } else if (!mUpdatePending) {
+            mUpdatePending = true;
+            mHandler.postDelayed(() -> {
+                mUpdatePending = false;
+                mLastUpdateTime = System.currentTimeMillis();
+                updateViews();
+            }, DEBOUNCE_DELAY_MS);
+        }
+    }
+
     private void updateViews() {
-        mProgressRootView.setAlpha(mProgressBarOpacity / 255f);
+        if (!mIsViewAttached) return;
+        
+        float opacity = mProgressBarOpacity / 255f;
+        mProgressRootView.setAlpha(opacity);
+        mCompactRootView.setAlpha(opacity);
         
         if (mIsForceHidden) {
             mProgressRootView.setVisibility(View.GONE);
+            mCompactRootView.setVisibility(View.GONE);
             return;
         }
 
         boolean isMediaPlaying = mShowMediaProgress && mMediaSessionHelper.isMediaPlaying();
-        if (isMediaPlaying) {
-            updateMediaProgress();
+        
+        if (mIsCompactModeEnabled && !mIsExpanded) {
+            mProgressRootView.setVisibility(View.GONE);
+            
+            if (!mIsEnabled && !isMediaPlaying) {
+                mCompactRootView.setVisibility(View.GONE);
+                return;
+            }
+            
+            mCompactRootView.setVisibility(View.VISIBLE);
+            
+            if (isMediaPlaying) {
+                updateMediaProgressCompact();
+            } else {
+                updateNotificationProgressCompact();
+            }
         } else {
-            updateNotificationProgress();
+            mCompactRootView.setVisibility(View.GONE);
+            
+            if (isMediaPlaying) {
+                if (mNeedsFullUiUpdate) {
+                    updateMediaProgressFull();
+                    mNeedsFullUiUpdate = false;
+                } else {
+                    updateMediaProgressOnly();
+                }
+            } else {
+                updateNotificationProgress();
+            }
         }
     }
 
-    /** Updates UI for media playback progress */
-    private void updateMediaProgress() {
+private void updateMediaProgressOnly() {
+    if (!mIsViewAttached) return;
+    
+    long totalDuration = mMediaSessionHelper.getTotalDuration();
+    long currentProgress = mMediaSessionHelper.getMediaControllerPlaybackState() != null
+            ? mMediaSessionHelper.getMediaControllerPlaybackState().getPosition() : 0;
+            
+    // Update the standard progress bar if visible
+    if (mProgressRootView.getVisibility() == View.VISIBLE && mProgressBar != null && totalDuration > 0) {
+        mProgressBar.setMax((int) totalDuration);
+        mProgressBar.setProgress((int) currentProgress);
+    }
+    
+    // Also update the circular progress bar for compact mode
+    if (mCompactRootView.getVisibility() == View.VISIBLE && mCircularProgressBar != null && totalDuration > 0) {
+        mCircularProgressBar.setMax((int) totalDuration);
+        mCircularProgressBar.setProgress((int) currentProgress);
+    }
+}
+
+    private void updateMediaProgressFull() {
+        if (!mIsViewAttached) return;
+        
         mProgressRootView.setVisibility(View.VISIBLE);
         mMediaProgressHandler.removeCallbacks(mMediaProgressRunnable);
         mMediaProgressHandler.post(mMediaProgressRunnable);
 
         Drawable mediaAppIcon = mMediaSessionHelper.getMediaAppIcon();
-        mIconView.setImageDrawable(mediaAppIcon != null ? mediaAppIcon : mContext.getResources().getDrawable(R.drawable.ic_default_music_icon));
-
-        long totalDuration = mMediaSessionHelper.getTotalDuration();
-        long currentProgress = mMediaSessionHelper.getMediaControllerPlaybackState() != null
-                ? mMediaSessionHelper.getMediaControllerPlaybackState().getPosition() : 0;
-        if (totalDuration > 0) {
-            mProgressBar.setMax((int) totalDuration);
-            mProgressBar.setProgress((int) currentProgress);
+        
+        if (mediaAppIcon != null) {
+            mIconView.setImageDrawable(mediaAppIcon);
+        } else {
+            String packageName = null;
+            if (mMediaSessionHelper.getMediaControllerPlaybackState() != null &&
+                mMediaSessionHelper.getMediaControllerPlaybackState().getExtras() != null) {
+                packageName = mMediaSessionHelper.getMediaControllerPlaybackState().getExtras().getString("package");
+            }
+            
+            if (packageName != null) {
+                loadIconInBackground(packageName, drawable -> {
+                    if (mIconView != null && drawable != null) {
+                        mIconView.setImageDrawable(drawable);
+                    } else if (mIconView != null) {
+                        mIconView.setImageDrawable(mContext.getResources().getDrawable(R.drawable.ic_default_music_icon));
+                    }
+                });
+            } else if (mIconView != null) {
+                mIconView.setImageDrawable(mContext.getResources().getDrawable(R.drawable.ic_default_music_icon));
+            }
         }
 
         mProgressRootView.setOnTouchListener((v, event) -> mGestureDetector.onTouchEvent(event));
     }
+    
+    private void updateMediaProgressCompact() {
+        if (!mIsViewAttached) return;
+        
+        mCompactRootView.setVisibility(View.VISIBLE);
+        mMediaProgressHandler.removeCallbacks(mMediaProgressRunnable);
+        mMediaProgressHandler.post(mMediaProgressRunnable);
 
-    /** Updates UI for notification progress */
+        long totalDuration = mMediaSessionHelper.getTotalDuration();
+        long currentProgress = mMediaSessionHelper.getMediaControllerPlaybackState() != null
+                ? mMediaSessionHelper.getMediaControllerPlaybackState().getPosition() : 0;
+                
+        if (totalDuration > 0 && mCircularProgressBar != null) {
+            mCircularProgressBar.setMax((int) totalDuration);
+            mCircularProgressBar.setProgress((int) currentProgress);
+        }
+
+        Drawable mediaAppIcon = mMediaSessionHelper.getMediaAppIcon();
+        
+        if (mediaAppIcon != null) {
+            mCompactIconView.setImageDrawable(mediaAppIcon);
+        } else {
+            String packageName = null;
+            if (mMediaSessionHelper.getMediaControllerPlaybackState() != null &&
+                mMediaSessionHelper.getMediaControllerPlaybackState().getExtras() != null) {
+                packageName = mMediaSessionHelper.getMediaControllerPlaybackState().getExtras().getString("package");
+            }
+            
+            if (packageName != null) {
+                loadIconInBackground(packageName, drawable -> {
+                    if (mCompactIconView != null && drawable != null) {
+                        mCompactIconView.setImageDrawable(drawable);
+                    } else if (mCompactIconView != null) {
+                        mCompactIconView.setImageDrawable(mContext.getResources().getDrawable(R.drawable.ic_default_music_icon));
+                    }
+                });
+            } else if (mCompactIconView != null) {
+                mCompactIconView.setImageDrawable(mContext.getResources().getDrawable(R.drawable.ic_default_music_icon));
+            }
+        }
+    }
+
     private void updateNotificationProgress() {
         if (!mIsEnabled || !mIsTrackingProgress) {
             mProgressRootView.setVisibility(View.GONE);
@@ -252,24 +429,78 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         mProgressBar.setMax(mCurrentProgressMax);
         mProgressBar.setProgress(mCurrentProgress);
 
-        if (mTrackedNotificationKey != null) {
-            StatusBarNotification sbn = findNotificationByKey(mTrackedNotificationKey);
-            if (sbn != null) {
-                Drawable downloadAppIcon = mIconFetcher.getMonotonicPackageIcon(sbn.getPackageName()).drawable;
-                if (downloadAppIcon != null) {
-                    mIconView.setImageDrawable(downloadAppIcon);
+        if (mTrackedPackageName != null) {
+            loadIconInBackground(mTrackedPackageName, drawable -> {
+                if (mIconView != null && drawable != null) {
+                    mIconView.setImageDrawable(drawable);
                 }
-            }
+            });
+        }
+    }
+    
+    private void updateNotificationProgressCompact() {
+        if (!mIsViewAttached) return;
+        
+        if (!mIsEnabled || !mIsTrackingProgress) {
+            mCompactRootView.setVisibility(View.GONE);
+            mMediaProgressHandler.removeCallbacks(mMediaProgressRunnable);
+            return;
+        }
+
+        mCompactRootView.setVisibility(View.VISIBLE);
+        if (mCurrentProgressMax <= 0) {
+            Log.w(TAG, "updateViews: invalid max progress " + mCurrentProgressMax + ", using 100");
+            mCurrentProgressMax = 100;
+        }
+
+        if (mCircularProgressBar != null) {
+            mCircularProgressBar.setMax(mCurrentProgressMax);
+            mCircularProgressBar.setProgress(mCurrentProgress);
+        }
+
+        if (mTrackedPackageName != null) {
+            loadIconInBackground(mTrackedPackageName, drawable -> {
+                if (mCompactIconView != null && drawable != null) {
+                    mCompactIconView.setImageDrawable(drawable);
+                }
+            });
         }
     }
 
-    /** Helper to extract progress from a notification */
+    private void loadIconInBackground(String packageName, IconCallback callback) {
+        if (packageName == null) return;
+        
+        if (mIconCache.containsKey(packageName)) {
+            IconFetcher.AdaptiveDrawableResult cachedResult = mIconCache.get(packageName);
+            if (cachedResult != null && cachedResult.drawable != null) {
+                callback.onIconLoaded(cachedResult.drawable);
+                return;
+            }
+        }
+        
+        mBackgroundExecutor.execute(() -> {
+            final IconFetcher.AdaptiveDrawableResult iconResult = 
+                    mIconFetcher.getMonotonicPackageIcon(packageName);
+            
+            if (iconResult != null && iconResult.drawable != null) {
+                mIconCache.put(packageName, iconResult);
+                
+                mHandler.post(() -> {
+                    callback.onIconLoaded(iconResult.drawable);
+                });
+            }
+        });
+    }
+    
+    private interface IconCallback {
+        void onIconLoaded(@Nullable Drawable drawable);
+    }
+
     private void extractProgress(Notification notification) {
         mCurrentProgressMax = notification.extras.getInt(Notification.EXTRA_PROGRESS_MAX, 100);
         mCurrentProgress = notification.extras.getInt(Notification.EXTRA_PROGRESS, 0);
     }
 
-    /** Tracks progress of a notification */
     private void trackProgress(final StatusBarNotification sbn) {
         mIsTrackingProgress = true;
         mTrackedNotificationKey = sbn.getKey();
@@ -280,7 +511,6 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         updateViews();
     }
 
-    /** Updates progress if the notification matches the tracked key */
     private void updateProgressIfNeeded(final StatusBarNotification sbn) {
         if (!mIsTrackingProgress) {
             Log.wtf(TAG, "Called updateProgress if needed, but we are not tracking anything");
@@ -292,7 +522,7 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         }
     }
 
-    /** Finds a notification by its key */
+    @Nullable
     private StatusBarNotification findNotificationByKey(String key) {
         for (StatusBarNotification notification : mNotificationListener.getActiveNotifications()) {
             if (notification.getKey().equals(key)) {
@@ -302,8 +532,7 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         return null;
     }
 
-    /** Checks if a notification has progress */
-    private static boolean hasProgress(final Notification notification) {
+    private static boolean hasProgress(@NonNull final Notification notification) {
         Bundle extras = notification.extras;
         boolean indeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false);
         boolean maxProgressValid = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0) > 0;
@@ -319,15 +548,21 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         mIconView.setImageDrawable(drawable.drawable);
     }
 
-    /** Shows a media control popup */
     private void showMediaPopup(View anchorView) {
         if (mMediaPopup != null && mMediaPopup.isShowing()) {
             mMediaPopup.dismiss();
             return;
         }
 
-        View popupView = LayoutInflater.from(mContext).inflate(R.layout.media_control_popup, null);
-        mMediaPopup = new PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        Context context = anchorView.getContext();
+        View popupView = LayoutInflater.from(context).inflate(R.layout.media_control_popup, null);
+        
+        if (mMediaPopup != null && mMediaPopup.isShowing()) {
+            mMediaPopup.dismiss();
+        }
+        
+        mMediaPopup = new PopupWindow(popupView, ViewGroup.LayoutParams.WRAP_CONTENT, 
+                ViewGroup.LayoutParams.WRAP_CONTENT, true);
         mMediaPopup.setOutsideTouchable(true);
         mMediaPopup.setFocusable(true);
 
@@ -349,7 +584,6 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         });
     }
 
-    /** Opens the app associated with the tracked notification */
     private void openTrackedApp() {
         if (mTrackedNotificationKey == null || mNotificationListener == null) {
             Log.w(TAG, "No tracked notification available");
@@ -372,16 +606,30 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         }
     }
 
-    /** Handles notification posted event */
     private void onNotificationPosted(final StatusBarNotification sbn) {
         Notification notification = sbn.getNotification();
-        if (!hasProgress(notification)) {
-            if (mTrackedNotificationKey != null && mTrackedNotificationKey.equals(sbn.getKey())) {
-                Log.d(TAG, "Tracked notification has lost progress");
-                synchronized (this) {
-                    mIsTrackingProgress = false;
-                    mCurrentDrawable = null;
-                    updateViews();
+        if (notification == null) return;
+        
+        mBackgroundExecutor.execute(() -> {
+            boolean hasValidProgress = hasProgress(notification);
+            
+            if (!hasValidProgress) {
+                if (mTrackedNotificationKey != null && mTrackedNotificationKey.equals(sbn.getKey())) {
+                    Log.d(TAG, "Tracked notification has lost progress");
+                    synchronized (this) {
+                        mIsTrackingProgress = false;
+                        mTrackedPackageName = null;
+                        mHandler.post(this::requestUiUpdate);
+                    }
+                }
+                return;
+            }
+            
+            synchronized (this) {
+                if (!mIsTrackingProgress) {
+                    mHandler.post(() -> trackProgress(sbn));
+                } else {
+                    mHandler.post(() -> updateProgressIfNeeded(sbn));
                 }
             }
             return;
@@ -395,7 +643,6 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         }
     }
 
-    /** Handles notification removed event */
     private void onNotificationRemoved(final StatusBarNotification sbn) {
         synchronized (this) {
             if (!mIsTrackingProgress || !sbn.getKey().equals(mTrackedNotificationKey)) {
@@ -407,17 +654,35 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         }
     }
 
-    /** Sets force hidden state */
     public void setForceHidden(final boolean forceHidden) {
         Log.d(TAG, "setForceHidden " + forceHidden);
         mIsForceHidden = forceHidden;
         updateViews();
     }
 
-    private void toggleMediaPlaybackState() { mMediaSessionHelper.toggleMediaPlaybackState(); }
-    private void skipToNextTrack() { mMediaSessionHelper.nextSong(); }
-    private void skipToPreviousTrack() { mMediaSessionHelper.prevSong(); }
-    private void openMediaApp() { mMediaSessionHelper.launchMediaApp(); }
+    private void toggleMediaPlaybackState() { 
+        if (mMediaSessionHelper != null) {
+            mMediaSessionHelper.toggleMediaPlaybackState(); 
+        }
+    }
+    
+    private void skipToNextTrack() { 
+        if (mMediaSessionHelper != null) {
+            mMediaSessionHelper.nextSong(); 
+        }
+    }
+    
+    private void skipToPreviousTrack() { 
+        if (mMediaSessionHelper != null) {
+            mMediaSessionHelper.prevSong(); 
+        }
+    }
+    
+    private void openMediaApp() { 
+        if (mMediaSessionHelper != null) {
+            mMediaSessionHelper.launchMediaApp(); 
+        }
+    }
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn, NotificationListenerService.RankingMap _rankingMap) {
@@ -435,16 +700,18 @@ public class OnGoingActionProgressController implements NotificationListener.Not
     }
 
     @Override
-    public void onNotificationRankingUpdate(NotificationListenerService.RankingMap _rankingMap) { /* stub */ }
+    public void onNotificationRankingUpdate(NotificationListenerService.RankingMap _rankingMap) {
+    }
+    
     @Override
-    public void onNotificationsInitialized() { /* stub */ }
+    public void onNotificationsInitialized() {
+    }
 
     @Override
     public void onKeyguardShowingChanged() {
         setForceHidden(mKeyguardStateController.isShowing());
     }
 
-    /** Settings observer for system settings */
     private class SettingsObserver extends ContentObserver {
         SettingsObserver(Handler handler) { super(handler); }
 
@@ -453,52 +720,84 @@ public class OnGoingActionProgressController implements NotificationListener.Not
             super.onChange(selfChange, uri);
             if (uri.equals(Settings.System.getUriFor(ONGOING_ACTION_CHIP_ENABLED)) ||
                     uri.equals(Settings.System.getUriFor(SHOW_MEDIA_PROGRESS)) ||
-                    uri.equals(Settings.System.getUriFor(PROGRESS_BAR_OPACITY))) {
+                    uri.equals(Settings.System.getUriFor(PROGRESS_BAR_OPACITY)) ||
+                    uri.equals(Settings.System.getUriFor(COMPACT_MODE_ENABLED))) {
                 updateSettings();
             }
         }
 
         public void register() {
-            mContentResolver.registerContentObserver(Settings.System.getUriFor(ONGOING_ACTION_CHIP_ENABLED), false, this, UserHandle.USER_ALL);
-            mContentResolver.registerContentObserver(Settings.System.getUriFor(SHOW_MEDIA_PROGRESS), false, this, UserHandle.USER_ALL);
-            mContentResolver.registerContentObserver(Settings.System.getUriFor(PROGRESS_BAR_OPACITY), false, this, UserHandle.USER_ALL);
+            mContentResolver.registerContentObserver(Settings.System.getUriFor(ONGOING_ACTION_CHIP_ENABLED), 
+                    false, this, UserHandle.USER_ALL);
+            mContentResolver.registerContentObserver(Settings.System.getUriFor(SHOW_MEDIA_PROGRESS), 
+                    false, this, UserHandle.USER_ALL);
+            mContentResolver.registerContentObserver(Settings.System.getUriFor(PROGRESS_BAR_OPACITY), 
+                    false, this, UserHandle.USER_ALL);
+            mContentResolver.registerContentObserver(Settings.System.getUriFor(COMPACT_MODE_ENABLED), 
+                    false, this, UserHandle.USER_ALL);
             updateSettings();
         }
 
         public void unregister() { mContentResolver.unregisterContentObserver(this); }
     }
 
-    /** Updates settings from system preferences */
     private void updateSettings() {
-        mIsEnabled = Settings.System.getIntForUser(mContentResolver, ONGOING_ACTION_CHIP_ENABLED, 1, UserHandle.USER_CURRENT) == 1;
-        mShowMediaProgress = Settings.System.getIntForUser(mContentResolver, SHOW_MEDIA_PROGRESS, 0, UserHandle.USER_CURRENT) == 1;
+        boolean wasEnabled = mIsEnabled;
+        boolean wasShowingMedia = mShowMediaProgress;
+        boolean wasCompactMode = mIsCompactModeEnabled;
         
-        // Read opacity as percentage (0-100)
-        int opacityPercentage = Settings.System.getIntForUser(mContentResolver, PROGRESS_BAR_OPACITY, DEFAULT_OPACITY_PERCENTAGE, UserHandle.USER_CURRENT);
+        mIsEnabled = Settings.System.getIntForUser(mContentResolver, 
+                ONGOING_ACTION_CHIP_ENABLED, 1, UserHandle.USER_CURRENT) == 1;
+        mShowMediaProgress = Settings.System.getIntForUser(mContentResolver, 
+                SHOW_MEDIA_PROGRESS, 0, UserHandle.USER_CURRENT) == 1;
+        mIsCompactModeEnabled = Settings.System.getIntForUser(mContentResolver, 
+                COMPACT_MODE_ENABLED, 0, UserHandle.USER_CURRENT) == 1;
         
-        // Ensure percentage is within valid range
-        if (opacityPercentage < 0) {
-            opacityPercentage = 0;
-        } else if (opacityPercentage > 100) {
-            opacityPercentage = 100;
-        }
+        int opacityPercentage = Settings.System.getIntForUser(mContentResolver, 
+                PROGRESS_BAR_OPACITY, DEFAULT_OPACITY_PERCENTAGE, UserHandle.USER_CURRENT);
         
-        // Convert percentage to alpha value (0-255)
+        opacityPercentage = Math.max(0, Math.min(100, opacityPercentage));
+        
         mProgressBarOpacity = (int)(opacityPercentage * 2.55f);
         
-        updateViews();
+        if (wasEnabled != mIsEnabled || wasShowingMedia != mShowMediaProgress || wasCompactMode != mIsCompactModeEnabled) {
+            mNeedsFullUiUpdate = true;
+            mIsExpanded = false;
+        }
+        
+        requestUiUpdate();
     }
 
-    /** Cleans up resources */
     public void destroy() {
+        mIsViewAttached = false;
+        
         mSettingsObserver.unregister();
+        mKeyguardStateController.removeCallback(this);
+        mMediaSessionHelper.removeMediaMetadataListener(mMediaMetadataListener);
+        
         mMediaProgressHandler.removeCallbacks(mMediaProgressRunnable);
+        mHandler.removeCallbacksAndMessages(null);
+        
+        if (mMediaPopup != null && mMediaPopup.isShowing()) {
+            mMediaPopup.dismiss();
+        }
+        
         mIsTrackingProgress = false;
         mCurrentDrawable = null;
         mCurrentProgress = 0;
         mCurrentProgressMax = 0;
         mTrackedNotificationKey = null;
-        mIconView.setImageDrawable(null);
+        mTrackedPackageName = null;
+        
+        mIconCache.clear();
+        
+        if (mIconView != null) {
+            mIconView.setImageDrawable(null);
+        }
+        
+        if (mCompactIconView != null) {
+            mCompactIconView.setImageDrawable(null);
+        }
     }
 
     private static int getThemeColor(Context context, int attrResId) {

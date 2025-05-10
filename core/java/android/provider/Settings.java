@@ -6529,6 +6529,11 @@ public final class Settings {
         @Readable
         public static final String VOLUME_KEY_CURSOR_CONTROL = "volume_key_cursor_control";
 
+	/**
+         * @hide
+         */
+	private static final String COMPACT_MODE = "compact_mode";
+
         /**
          * IMPORTANT: If you add a new public settings you also have to add it to
          * PUBLIC_SETTINGS below. If the new setting is hidden you have to add
