@@ -607,12 +607,16 @@ private void updateMediaProgressOnly() {
     }
 
     private void onNotificationPosted(final StatusBarNotification sbn) {
+        if (sbn == null) return;
+
+        if (!mIsEnabled) return;
+
         Notification notification = sbn.getNotification();
         if (notification == null) return;
-        
+
         mBackgroundExecutor.execute(() -> {
             boolean hasValidProgress = hasProgress(notification);
-            
+
             if (!hasValidProgress) {
                 if (mTrackedNotificationKey != null && mTrackedNotificationKey.equals(sbn.getKey())) {
                     Log.d(TAG, "Tracked notification has lost progress");
