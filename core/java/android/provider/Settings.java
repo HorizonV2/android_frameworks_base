@@ -6793,6 +6793,8 @@ public final class Settings {
          * @hide
          */
         public static final String STATUS_BAR_CUSTOM_HEADER_HEIGHT = "status_bar_custom_header_height";
+
+        /**
          * Enable/disable Bluetooth Battery bar
          * @hide
          */
