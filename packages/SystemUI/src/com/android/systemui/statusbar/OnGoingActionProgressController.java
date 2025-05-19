@@ -43,11 +43,14 @@ import android.widget.ImageView;
 import android.widget.PopupWindow;
 import android.widget.ProgressBar;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import com.android.systemui.res.R;
 import com.android.systemui.util.IconFetcher;
 import com.android.systemui.statusbar.OnGoingActionProgressGroup;
 import com.android.systemui.statusbar.policy.KeyguardStateController;
-import com.android.systemui.statusbar.util.MediaSessionManagerHelper;
+import com.android.systemui.util.MediaSessionManagerHelper;
 
 import com.android.internal.util.android.VibrationUtils;
 
@@ -65,15 +68,18 @@ public class OnGoingActionProgressController implements NotificationListener.Not
     private static final int SWIPE_VELOCITY_THRESHOLD = 100;
     private static final int DEFAULT_OPACITY = 255;
     private static final int DEFAULT_OPACITY_PERCENTAGE = 100;
+    private static final int MEDIA_UPDATE_INTERVAL_MS = 1000;
+    private static final int DEBOUNCE_DELAY_MS = 150;
 
-    private Context mContext;
-    private ContentResolver mContentResolver;
+    private final Context mContext;
+    private final ContentResolver mContentResolver;
     private final Handler mHandler;
     private final SettingsObserver mSettingsObserver;
     private final KeyguardStateController mKeyguardStateController;
     private final NotificationListener mNotificationListener;
     private final IconFetcher mIconFetcher;
     private final MediaSessionManagerHelper mMediaSessionHelper;
+    private final Executor mBackgroundExecutor;
 
     private final ProgressBar mProgressBar;
     private final ProgressBar mCircularProgressBar;
@@ -92,8 +98,8 @@ public class OnGoingActionProgressController implements NotificationListener.Not
     private int mCurrentProgress = 0;
     private int mCurrentProgressMax = 0;
     private int mProgressBarOpacity = DEFAULT_OPACITY;
-    private Drawable mCurrentDrawable = null;
     private String mTrackedNotificationKey;
+    private String mTrackedPackageName;
     private PopupWindow mMediaPopup;
     private boolean mIsPopupActive = false;
     private boolean mNeedsFullUiUpdate = true;
@@ -109,8 +115,8 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         @Override
         public void run() {
             if (mShowMediaProgress && mMediaSessionHelper.isMediaPlaying()) {
-                updateViews();
-                mMediaProgressHandler.postDelayed(this, 1000);
+                updateMediaProgressOnly();
+                mMediaProgressHandler.postDelayed(this, MEDIA_UPDATE_INTERVAL_MS);
             }
         }
     };
@@ -136,18 +142,21 @@ public class OnGoingActionProgressController implements NotificationListener.Not
             KeyguardStateController keyguardStateController) {
         if (progressGroup == null) {
             Log.wtf(TAG, "progressGroup is null");
+            throw new IllegalArgumentException("progressGroup cannot be null");
         }
+        
         mNotificationListener = notificationListener;
         if (mNotificationListener == null) {
             Log.wtf(TAG, "mNotificationListener is null");
+            throw new IllegalArgumentException("notificationListener cannot be null");
         }
 
         mKeyguardStateController = keyguardStateController;
-        keyguardStateController.addCallback(this);
         mContext = context;
         mContentResolver = context.getContentResolver();
         mHandler = new Handler(Looper.getMainLooper());
         mSettingsObserver = new SettingsObserver(mHandler);
+        mBackgroundExecutor = Executors.newSingleThreadExecutor();
 
         mProgressBar = progressGroup.progressBarView;
         mCircularProgressBar = progressGroup.circularProgressBarView;
@@ -157,7 +166,6 @@ public class OnGoingActionProgressController implements NotificationListener.Not
         mCompactIconView = progressGroup.compactIconView;
 
         mIconFetcher = new IconFetcher(context);
-        mNotificationListener.addNotificationHandler(this);
         mMediaSessionHelper = MediaSessionManagerHelper.Companion.getInstance(context);
 
         mGestureDetector = new GestureDetector(mContext, new MediaGestureListener());
@@ -365,7 +373,7 @@ private void updateMediaProgressOnly() {
             }
         }
 
-        mProgressRootView.setOnTouchListener((v, event) -> mGestureDetector.onTouchEvent(event));
+        updateMediaProgressOnly();
     }
     
     private void updateMediaProgressCompact() {
@@ -410,12 +418,11 @@ private void updateMediaProgressOnly() {
     }
 
     private void updateNotificationProgress() {
+        if (!mIsViewAttached) return;
+        
         if (!mIsEnabled || !mIsTrackingProgress) {
             mProgressRootView.setVisibility(View.GONE);
             mMediaProgressHandler.removeCallbacks(mMediaProgressRunnable);
-            if (!mMediaSessionHelper.isMediaPlaying()) {
-                mIconView.setImageDrawable(null);
-            }
             return;
         }
 
@@ -425,9 +432,10 @@ private void updateMediaProgressOnly() {
             mCurrentProgressMax = 100;
         }
 
-        Log.d(TAG, "updateViews: " + mCurrentProgress + "/" + mCurrentProgressMax);
-        mProgressBar.setMax(mCurrentProgressMax);
-        mProgressBar.setProgress(mCurrentProgress);
+        if (mProgressBar != null) {
+            mProgressBar.setMax(mCurrentProgressMax);
+            mProgressBar.setProgress(mCurrentProgress);
+        }
 
         if (mTrackedPackageName != null) {
             loadIconInBackground(mTrackedPackageName, drawable -> {
@@ -497,33 +505,33 @@ private void updateMediaProgressOnly() {
     }
 
     private void extractProgress(Notification notification) {
-        mCurrentProgressMax = notification.extras.getInt(Notification.EXTRA_PROGRESS_MAX, 100);
-        mCurrentProgress = notification.extras.getInt(Notification.EXTRA_PROGRESS, 0);
+        Bundle extras = notification.extras;
+        mCurrentProgressMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 100);
+        mCurrentProgress = extras.getInt(Notification.EXTRA_PROGRESS, 0);
     }
 
     private void trackProgress(final StatusBarNotification sbn) {
         mIsTrackingProgress = true;
         mTrackedNotificationKey = sbn.getKey();
+        mTrackedPackageName = sbn.getPackageName();
         extractProgress(sbn.getNotification());
-        IconFetcher.AdaptiveDrawableResult drawable = mIconFetcher.getMonotonicPackageIcon(sbn.getPackageName());
-        mCurrentDrawable = drawable.drawable;
-        updateIconImageView(drawable);
-        updateViews();
+        requestUiUpdate();
     }
 
     private void updateProgressIfNeeded(final StatusBarNotification sbn) {
         if (!mIsTrackingProgress) {
-            Log.wtf(TAG, "Called updateProgress if needed, but we are not tracking anything");
             return;
         }
         if (sbn.getKey().equals(mTrackedNotificationKey)) {
             extractProgress(sbn.getNotification());
-            updateViews();
+            requestUiUpdate();
         }
     }
 
     @Nullable
     private StatusBarNotification findNotificationByKey(String key) {
+        if (key == null || mNotificationListener == null) return null;
+        
         for (StatusBarNotification notification : mNotificationListener.getActiveNotifications()) {
             if (notification.getKey().equals(key)) {
                 return notification;
@@ -534,23 +542,21 @@ private void updateMediaProgressOnly() {
 
     private static boolean hasProgress(@NonNull final Notification notification) {
         Bundle extras = notification.extras;
+        if (extras == null) return false;
+        
         boolean indeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false);
         boolean maxProgressValid = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0) > 0;
         return extras.containsKey(Notification.EXTRA_PROGRESS) &&
-                extras.containsKey(Notification.EXTRA_PROGRESS_MAX) &&
-                !indeterminate && maxProgressValid;
-    }
-
-    /** Updates the icon view based on drawable properties */
-    private void updateIconImageView(IconFetcher.AdaptiveDrawableResult drawable) {
-        mIconView.setImageTintList(drawable.isAdaptive ?
-                ColorStateList.valueOf(getThemeColor(mContext, android.R.attr.colorForeground)) : null);
-        mIconView.setImageDrawable(drawable.drawable);
+               extras.containsKey(Notification.EXTRA_PROGRESS_MAX) &&
+               !indeterminate && maxProgressValid;
     }
 
     private void showMediaPopup(View anchorView) {
-        if (mMediaPopup != null && mMediaPopup.isShowing()) {
-            mMediaPopup.dismiss();
+        if (mIsPopupActive) {
+            if (mMediaPopup != null) {
+                mMediaPopup.dismiss();
+            }
+            mIsPopupActive = false;
             return;
         }
 
@@ -565,44 +571,47 @@ private void updateMediaProgressOnly() {
                 ViewGroup.LayoutParams.WRAP_CONTENT, true);
         mMediaPopup.setOutsideTouchable(true);
         mMediaPopup.setFocusable(true);
+        mMediaPopup.setOnDismissListener(() -> mIsPopupActive = false);
 
         ImageButton btnPrevious = popupView.findViewById(R.id.btn_previous);
         ImageButton btnNext = popupView.findViewById(R.id.btn_next);
-        btnPrevious.setOnClickListener(v -> {
-            skipToPreviousTrack();
-            mMediaPopup.dismiss();
-        });
-        btnNext.setOnClickListener(v -> {
-            skipToNextTrack();
-            mMediaPopup.dismiss();
-        });
+        
+        if (btnPrevious != null) {
+            btnPrevious.setOnClickListener(v -> {
+                skipToPreviousTrack();
+                mMediaPopup.dismiss();
+            });
+        }
+        
+        if (btnNext != null) {
+            btnNext.setOnClickListener(v -> {
+                skipToNextTrack();
+                mMediaPopup.dismiss();
+            });
+        }
 
         anchorView.post(() -> {
+            if (!mIsViewAttached) return;
+            
             int offsetX = -popupView.getWidth() / 3;
             int offsetY = -anchorView.getHeight();
             mMediaPopup.showAsDropDown(anchorView, offsetX, offsetY);
+            mIsPopupActive = true;
         });
     }
 
     private void openTrackedApp() {
-        if (mTrackedNotificationKey == null || mNotificationListener == null) {
-            Log.w(TAG, "No tracked notification available");
+        if (mTrackedPackageName == null) {
+            Log.w(TAG, "No tracked package available");
             return;
         }
 
-        StatusBarNotification sbn = findNotificationByKey(mTrackedNotificationKey);
-        if (sbn == null) {
-            Log.w(TAG, "Tracked notification not found");
-            return;
-        }
-
-        String packageName = sbn.getPackageName();
-        Intent launchIntent = mContext.getPackageManager().getLaunchIntentForPackage(packageName);
+        Intent launchIntent = mContext.getPackageManager().getLaunchIntentForPackage(mTrackedPackageName);
         if (launchIntent != null) {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             mContext.startActivity(launchIntent);
         } else {
-            Log.w(TAG, "No launch intent for package: " + packageName);
+            Log.w(TAG, "No launch intent for package: " + mTrackedPackageName);
         }
     }
 
@@ -636,32 +645,28 @@ private void updateMediaProgressOnly() {
                     mHandler.post(() -> updateProgressIfNeeded(sbn));
                 }
             }
-            return;
-        }
-        synchronized (this) {
-            if (!mIsTrackingProgress) {
-                trackProgress(sbn);
-            } else {
-                updateProgressIfNeeded(sbn);
-            }
-        }
+        });
     }
 
     private void onNotificationRemoved(final StatusBarNotification sbn) {
+        if (sbn == null) return;
+        
         synchronized (this) {
             if (!mIsTrackingProgress || !sbn.getKey().equals(mTrackedNotificationKey)) {
                 return;
             }
             mIsTrackingProgress = false;
-            mCurrentDrawable = null;
-            updateViews();
+            mTrackedPackageName = null;
+            requestUiUpdate();
         }
     }
 
     public void setForceHidden(final boolean forceHidden) {
-        Log.d(TAG, "setForceHidden " + forceHidden);
-        mIsForceHidden = forceHidden;
-        updateViews();
+        if (mIsForceHidden != forceHidden) {
+            Log.d(TAG, "setForceHidden " + forceHidden);
+            mIsForceHidden = forceHidden;
+            requestUiUpdate();
+        }
     }
 
     private void toggleMediaPlaybackState() { 
@@ -742,7 +747,9 @@ private void updateMediaProgressOnly() {
             updateSettings();
         }
 
-        public void unregister() { mContentResolver.unregisterContentObserver(this); }
+        public void unregister() { 
+            mContentResolver.unregisterContentObserver(this); 
+        }
     }
 
     private void updateSettings() {
@@ -787,9 +794,6 @@ private void updateMediaProgressOnly() {
         }
         
         mIsTrackingProgress = false;
-        mCurrentDrawable = null;
-        mCurrentProgress = 0;
-        mCurrentProgressMax = 0;
         mTrackedNotificationKey = null;
         mTrackedPackageName = null;
         

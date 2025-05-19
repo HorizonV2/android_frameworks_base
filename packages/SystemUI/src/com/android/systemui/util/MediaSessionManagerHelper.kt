@@ -18,7 +18,9 @@ package com.android.systemui.util
 import android.app.WallpaperColors
 import android.content.Context
 import android.content.res.Configuration
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.drawable.Drawable
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionLegacyHelper
@@ -52,7 +54,6 @@ class MediaSessionManagerHelper private constructor(private val context: Context
 
     private var lastSavedPackageName: String? = null
     private val mediaSessionManager: MediaSessionManager = context.getSystemService(MediaSessionManager::class.java)!!
-    private val activityLauncherUtils: ActivityLauncherUtils = ActivityLauncherUtils(context)
     private var activeController: MediaController? = null
     private val listeners: MutableSet<MediaMetadataListener> = mutableSetOf()
     private var mediaMetadata: MediaMetadata? = null
@@ -245,6 +246,16 @@ class MediaSessionManagerHelper private constructor(private val context: Context
             it.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                 ?: it.getBitmap(MediaMetadata.METADATA_KEY_ART)
                 ?: it.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+        }
+    }
+
+    fun getMediaAppIcon(): Drawable? {
+        val packageName = activeController?.packageName ?: return null
+        return try {
+            val pm = context.packageManager
+            pm.getApplicationIcon(packageName)
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
         }
     }
 
