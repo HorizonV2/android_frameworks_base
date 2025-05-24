@@ -116,7 +116,6 @@ public class Clock extends TextView implements
     private static final int AM_PM_STYLE_GONE    = 2;
 
     private int mAmPmStyle = AM_PM_STYLE_GONE;
-    private ContentObserver mContentObserver;
     private boolean mShowSeconds;
     private Handler mSecondsHandler;
 
@@ -178,6 +177,7 @@ public class Clock extends TextView implements
                     }
                 }
             };
+            mAmPmStyle = a.getInt(R.styleable.Clock_amPmStyle, mAmPmStyle);
             mIsStatusBar = a.getBoolean(R.styleable.Clock_isStatusBar, mIsStatusBar);
             mNonAdaptedColor = getCurrentTextColor();
         } finally {
