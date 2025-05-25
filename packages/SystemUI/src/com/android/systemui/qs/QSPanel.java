@@ -130,22 +130,6 @@ public class QSPanel extends LinearLayout {
         setOrientation(VERTICAL);
 
         mMovableContentStartIndex = getChildCount();
-
-        mIsAutomaticBrightnessAvailable = getResources().getBoolean(
-                com.android.internal.R.bool.config_automatic_brightness_available);
-
-        mContentObserver = new ContentObserver(null) {
-            @Override
-            public void onChange(boolean selfChange, @Nullable Uri uri) {
-                if (LineageSettings.Secure.getUriFor(
-                            LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER).equals(uri)
-                        && mBrightnessView != null) {
-                    updateViewVisibilityForTuningValue(mBrightnessView,
-                            LineageSettings.Secure.getString(mContext.getContentResolver(),
-                                    LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER));
-                }
-            }
-        };
     }
 
     void initialize(QSLogger qsLogger, boolean usingMediaPlayer) {
@@ -494,11 +478,6 @@ public class QSPanel extends LinearLayout {
         if (mFooter != null) {
             // Then the footer with the settings
             switchToParent(mFooter, parent, index);
-            index++;
-        }
-        
-        if (mBrightnessView != null) {
-            switchToParent(mBrightnessView, parent, index);
             index++;
         }
     }

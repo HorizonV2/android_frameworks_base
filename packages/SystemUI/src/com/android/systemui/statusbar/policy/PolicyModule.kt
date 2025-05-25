@@ -32,6 +32,7 @@ import com.android.systemui.qs.tiles.DndTile
 import com.android.systemui.qs.tiles.FlashlightTile
 import com.android.systemui.qs.tiles.FlashlightStrengthTile
 import com.android.systemui.qs.tiles.LocationTile
+import com.android.systemui.qs.tiles.RingerModeTile
 import com.android.systemui.qs.tiles.MicrophoneToggleTile
 import com.android.systemui.qs.tiles.ModesTile
 import com.android.systemui.qs.tiles.UiModeNightTile
@@ -475,6 +476,11 @@ interface PolicyModule {
     @IntoMap
     @StringKey(MicrophoneToggleTile.TILE_SPEC)
     fun bindMicrophoneToggleTile(microphoneToggleTile: MicrophoneToggleTile): QSTileImpl<*>
+
+    @Binds
+    @IntoMap
+    @StringKey(RingerModeTile.TILE_SPEC)
+    fun bindRingerModeTile(RingerModeTile: RingerModeTile): QSTileImpl<*>
 
     /** Inject AlarmTile into tileMap in QSModule */
     @Binds

@@ -101,16 +101,6 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
         @Override
         public void onChange(boolean selfChange, @android.annotation.Nullable Uri uri) {
             if (LineageSettings.Secure.getUriFor(
-                    LineageSettings.Secure.QS_SHOW_AUTO_BRIGHTNESS).equals(uri)
-                    && mView.getResources().getBoolean(
-                    com.android.internal.R.bool.config_automatic_brightness_available)) {
-                mView.getBrightnessView().findViewById(R.id.brightness_icon).setVisibility(
-                        TunerService.parseIntegerSwitch(LineageSettings.Secure.getStringForUser(
-                                mView.getContext().getContentResolver(),
-                                LineageSettings.Secure.QS_SHOW_AUTO_BRIGHTNESS,
-                                mSelectedUserInteractor.getSelectedUserId()), false) ? View.VISIBLE
-                                : View.GONE);
-            } else if (LineageSettings.Secure.getUriFor(
                     LineageSettings.Secure.QS_SHOW_BRIGHTNESS_SLIDER).equals(uri)
                     && mView.getBrightnessView() != null) {
                 mView.getBrightnessView().setVisibility(
@@ -350,4 +340,3 @@ public class QSPanelController extends QSPanelControllerBase<QSPanel> {
         return mView.getBottom();
     }
 }
-
