@@ -376,18 +376,7 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
         } else {
             longPressEffect = null;
         }
-        final QSTileViewImpl tileView;
-        if (FlashlightStrengthTile.TILE_SPEC.equals(tile.getTileSpec())
-            || VolumeControlTile.TILE_SPEC.equals(tile.getTileSpec())) {
-            TouchableQSTile touchableTile = (TouchableQSTile) tile;
-            tileView = new SliderQSTileViewImpl(
-                    getContext(),
-                    collapsedView,
-                    slideableQSTile);
-        } else {
-            tileView = new QSTileViewImpl(
-                    getContext(), collapsedView, longPressEffect);
-        }
+        final QSTileView tileView = createTileView(tile, collapsedView, longPressEffect);
         final TileRecord r = new TileRecord(tile, tileView);
         // TODO(b/250618218): Remove the QSLogger in QSTileViewImpl once we know the root cause of
         // b/250618218.
