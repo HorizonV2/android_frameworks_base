@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2022-2024 Paranoid Android
+ * Copyright (C) 2022 Paranoid Android
+ *           (C) 2023 StatiXOS
  *           (C) 2023 ArrowOS
  *           (C) 2023 The LibreMobileOS Foundation
  *
@@ -26,6 +27,7 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.os.Build;
 import android.os.Binder;
+import android.os.Environment;
 import android.os.Process;
 import android.os.SystemProperties;
 import android.text.TextUtils;
@@ -33,8 +35,18 @@ import android.util.Log;
 
 import com.android.internal.R;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,29 +56,27 @@ import java.util.Set;
 public class PropImitationHooks {
 
     private static final String TAG = "PropImitationHooks";
-    private static final boolean DEBUG = SystemProperties.getBoolean("debug.pihooks.log", false);
+    private static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
+    private static final String DATA_FILE = "gms_certified_props.json";
 
     private static final String PACKAGE_AIWALLPAPERS = "com.google.android.apps.aiwallpapers";
     private static final String PACKAGE_ARCORE = "com.google.ar.core";
     private static final String PACKAGE_ASI = "com.google.android.as";
-    private static final String PACKAGE_ASSISTANT = "com.google.android.apps.googleassistant";
+    private static final String PACKAGE_BARD = "com.google.android.apps.bard";
     private static final String PACKAGE_EMOJIWALLPAPER = "com.google.android.apps.emojiwallpaper";
-
     private static final String PACKAGE_FINSKY = "com.android.vending";
     private static final String PACKAGE_GMS = "com.google.android.gms";
     private static final String PACKAGE_GPHOTOS = "com.google.android.apps.photos";
     private static final String PACKAGE_NETFLIX = "com.netflix.mediaclient";
-    private static final String PACKAGE_YOUTUBE = "com.google.android.youtube";
-    private static final String PACKAGE_YOUTUBE_MUSIC = "com.google.android.apps.youtube.music";
-
-    private static final String PACKAGE_NEXUSLAUNCHER = "com.google.android.apps.nexuslauncher";
+    private static final String PACKAGE_PIXELCREATIVE = "com.google.android.apps.pixel.creativeassistant";
     private static final String PACKAGE_PIXELTHEMES = "com.google.android.apps.customization.pixel";
     private static final String PACKAGE_PIXELWALLPAPER = "com.google.android.apps.wallpaper.pixel";
+    private static final String PACKAGE_LAUNCHER = "com.google.android.apps.nexuslauncher";
     private static final String PACKAGE_LIVEWALLPAPER = "com.google.pixel.livewallpaper";
     private static final String PACKAGE_SUBSCRIPTION_RED = "com.google.android.apps.subscriptions.red";
     private static final String PACKAGE_WALLPAPER = "com.google.android.apps.wallpaper";
     private static final String PACKAGE_WALLPAPEREFFECTS = "com.google.android.wallpaper.effects";
-
+    private static final String PACKAGE_WEATHER = "com.google.android.apps.weather";
     private static final String PROCESS_GMS_GAPPS = PACKAGE_GMS + ".gapps";
     private static final String PROCESS_GMS_GSERVICE = PACKAGE_GMS + ".gservice";
     private static final String PROCESS_GMS_LEARNING = PACKAGE_GMS + ".learning";
@@ -83,21 +93,15 @@ public class PropImitationHooks {
     private static final ComponentName GMS_ADD_ACCOUNT_ACTIVITY = ComponentName.unflattenFromString(
             "com.google.android.gms/.auth.uiflows.minutemaid.MinuteMaidActivity");
 
-    private static final Boolean sDisableGmsProps = SystemProperties.getBoolean(
-            "persist.sys.pihooks.disable.gms_props", false);
-
-    private static final Boolean sDisableKeyAttestationBlock = SystemProperties.getBoolean(
-        "persist.sys.pihooks.disable.gms_key_attestation_block", false);
-
-    private static final Map<String, String> sPixelNineProps = Map.of(
-            "PRODUCT", "caiman",
-            "DEVICE", "caiman",
-            "HARDWARE", "caiman",
+    private static final Map<String, String> sPixelNineXLProps = Map.of(
+            "PRODUCT", "komodo",
+            "DEVICE", "komodo",
+            "HARDWARE", "komodo",
             "MANUFACTURER", "Google",
             "BRAND", "google",
-            "MODEL", "Pixel 9 Pro",
-            "ID", "BP1A.250305.020",
-            "FINGERPRINT", "google/caiman/caiman:15/BP1A.250305.020/13009785:user/release-keys"
+            "MODEL", "Pixel 9 Pro XL",
+            "ID", "BP1A.250505.005",
+            "FINGERPRINT", "google/komodo/komodo:15/BP1A.250505.005/13277524:user/release-keys"
     );
 
     private static final Map<String, String> sPixelFiveProps = Map.of(
@@ -107,19 +111,8 @@ public class PropImitationHooks {
             "MANUFACTURER", "Google",
             "BRAND", "google",
             "MODEL", "Pixel 5a",
-            "ID", "AP2A.240805.005.S4",
-            "FINGERPRINT", "google/barbet/barbet:14/AP2A.240805.005.S4/12281092:user/release-keys"
-    );
-
-    private static final Map<String, String> sPixelTabletProps = Map.of(
-            "PRODUCT", "tangorpro",
-            "DEVICE", "tangorpro",
-            "HARDWARE", "tangorpro",
-            "MANUFACTURER", "Google",
-            "BRAND", "google",
-            "MODEL", "Pixel Tablet",
-            "ID", "BP1A.250305.020.T2",
-            "FINGERPRINT", "google/tangorpro/tangorpro:15/BP1A.250305.020.T2/13023825:user/release-keys"
+            "ID", "AP2A.240805.005",
+            "FINGERPRINT", "google/barbet/barbet:14/AP2A.240805.005/12025142:user/release-keys"
     );
 
     private static final Map<String, String> sPixelXLProps = Map.of(
@@ -133,14 +126,6 @@ public class PropImitationHooks {
             "FINGERPRINT", "google/marlin/marlin:10/QP1A.191005.007.A3/5972272:user/release-keys"
     );
 
-    private static final Map<String, String> sGalaxyS23Props = Map.of(
-	    "DEVICE", "dm1q",
-	    "MANUFACTURER", "samsung",
-	    "BRAND", "samsung",
-	    "MODEL", "SM-S911B",
-	    "FINGERPRINT", "samsung/dm1qxxx/dm1q:13/TP1A.220624.014/S911BXXS3AWF7:user/release-keys"
-    );
-
     private static final Set<String> sNexusFeatures = Set.of(
             "NEXUS_PRELOAD",
             "nexus_preload",
@@ -150,6 +135,8 @@ public class PropImitationHooks {
     );
 
     private static final Set<String> sPixelFeatures = Set.of(
+            "GOOGLE_BUILD",
+            "GOOGLE_EXPERIENCE",
             "PIXEL_2017_EXPERIENCE",
             "PIXEL_2017_PRELOAD",
             "PIXEL_2018_EXPERIENCE",
@@ -170,14 +157,17 @@ public class PropImitationHooks {
             "PIXEL_2023_EXPERIENCE",
             "PIXEL_2023_MIDYEAR_EXPERIENCE",
             "PIXEL_2024_EXPERIENCE",
-            "PIXEL_2024_MIDYEAR_EXPERIENCE"
+            "PIXEL_2024_MIDYEAR_EXPERIENCE",
+            "PIXEL_2025_EXPERIENCE",
+            "PIXEL_2025_MIDYEAR_EXPERIENCE"
     );
 
-    private static volatile String[] sCertifiedProps;
-    private static volatile String sStockFp, sNetflixModel;
+    private static volatile List<String> sCertifiedProps = new ArrayList<>();
+    private static volatile String sStockFp;
+    private static volatile String sNetflixModel;
 
     private static volatile String sProcessName;
-    private static volatile boolean sIsGms, sIsFinsky, sIsPhotos, sIsYouTube, sIsYouTubeMusic;
+    private static volatile boolean sIsGms, sIsFinsky, sIsPhotos;
 
     public static void setProps(Context context) {
         final String packageName = context.getPackageName();
@@ -194,7 +184,6 @@ public class PropImitationHooks {
             return;
         }
 
-        sCertifiedProps = res.getStringArray(R.array.config_certifiedBuildProperties);
         sStockFp = res.getString(R.string.config_stockFingerprint);
         sNetflixModel = res.getString(R.string.config_netflixSpoofModel);
 
@@ -202,21 +191,18 @@ public class PropImitationHooks {
         sIsGms = packageName.equals(PACKAGE_GMS) && processName.equals(PROCESS_GMS_UNSTABLE);
         sIsFinsky = packageName.equals(PACKAGE_FINSKY);
         sIsPhotos = packageName.equals(PACKAGE_GPHOTOS);
-	sIsYouTube = packageName.equals(PACKAGE_YOUTUBE);
-	sIsYouTubeMusic = packageName.equals(PACKAGE_YOUTUBE_MUSIC);
 
         /* Set certified properties for GMSCore
          * Set stock fingerprint for ARCore
          * Set Pixel 9 Pro XL for GMS device configurator
          * Set Pixel XL for Google Photos
          * Set custom model for Netflix
-	 * Set Samsung Galaxy S23 for YouTube and YouTube Music
          */
 
         switch (processName) {
             case PROCESS_GMS_UNSTABLE:
                 dlog("Setting certified props for: " + packageName + " process: " + processName);
-                setCertifiedPropsForGms();
+                setCertifiedPropsForGms(context);
                 return;
             case PROCESS_GMS_PERSISTENT:
             case PROCESS_GMS_GAPPS:
@@ -229,32 +215,23 @@ public class PropImitationHooks {
                 return;
         }
 
-        if (!sStockFp.isEmpty() && packageName.equals(PACKAGE_ARCORE)) {
-            dlog("Setting stock fingerprint for: " + packageName);
-            setPropValue("FINGERPRINT", sStockFp);
-            return;
-        }
-
         switch (packageName) {
             case PACKAGE_AIWALLPAPERS:
-            case PACKAGE_ASSISTANT:
             case PACKAGE_ASI:
+            case PACKAGE_BARD:
             case PACKAGE_EMOJIWALLPAPER:
             case PACKAGE_GMS:
+            case PACKAGE_LAUNCHER:
             case PACKAGE_LIVEWALLPAPER:
-            case PACKAGE_NEXUSLAUNCHER:
+            case PACKAGE_PIXELCREATIVE:
             case PACKAGE_PIXELTHEMES:
             case PACKAGE_PIXELWALLPAPER:
             case PACKAGE_SUBSCRIPTION_RED:
             case PACKAGE_WALLPAPER:
             case PACKAGE_WALLPAPEREFFECTS:
-                if (SystemProperties.get("ro.build.characteristics").equals("tablet")) {
-                    dlog("Spoofing Pixel Tablet for: " + packageName + " process: " + processName);
-                    setProps(sPixelTabletProps);
-                } else {
-                    dlog("Spoofing Pixel 9 Pro for: " + packageName + " process: " + processName);
-                    setProps(sPixelNineProps);
-                }
+            case PACKAGE_WEATHER:
+                dlog("Spoofing Pixel 9 Pro XL for: " + packageName + " process: " + processName);
+                setProps(sPixelNineXLProps);
                 return;
             case PACKAGE_GPHOTOS:
                 dlog("Spoofing Pixel XL for Google Photos");
@@ -263,16 +240,14 @@ public class PropImitationHooks {
             case PACKAGE_NETFLIX:
                 if (!sNetflixModel.isEmpty()) {
                     dlog("Setting model to " + sNetflixModel + " for Netflix");
-                    setPropValue("MODEL", sNetflixModel);
+                    setPropValue("MODEL", sNetflixModel);;
                 }
                 return;
-	    case PACKAGE_YOUTUBE:
-                dlog("Spoofing Samsung Galaxy S23 for YouTube");
-                setProps(sGalaxyS23Props);
-                return;
-	    case PACKAGE_YOUTUBE_MUSIC:
-                dlog("Spoofing Samsung Galaxy S23 for YouTube Music");
-                setProps(sGalaxyS23Props);
+            case PACKAGE_ARCORE:
+                if (!sStockFp.isEmpty()) {
+                    dlog("Setting stock fingerprint for: " + packageName);
+                    setPropValue("FINGERPRINT", sStockFp);;
+                }
                 return;
         }
     }
@@ -303,9 +278,28 @@ public class PropImitationHooks {
         if (!SystemProperties.getBoolean(SPOOF_PIHOOKS_PI, true))
             return;
 
-        if (sCertifiedProps.length == 0) {
-            dlog("Certified props are not set");
-            return;
+        File dataFile = new File(Environment.getDataSystemDirectory(), DATA_FILE);
+        String savedProps = readFromFile(dataFile);
+
+        if (TextUtils.isEmpty(savedProps)) {
+            Log.d(TAG, "Parsing props locally - data file unavailable");
+            sCertifiedProps = Arrays.asList(context.getResources().getStringArray(R.array.config_certifiedBuildProperties));
+        } else {
+            Log.d(TAG, "Parsing props fetched by attestation service");
+            try {
+                JSONObject parsedProps = new JSONObject(savedProps);
+                Iterator<String> keys = parsedProps.keys();
+
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    String value = parsedProps.getString(key);
+                    sCertifiedProps.add(key + ":" + value);
+                }
+            } catch (JSONException e) {
+                Log.e(TAG, "Error parsing JSON data", e);
+                Log.d(TAG, "Parsing props locally as fallback");
+                sCertifiedProps = Arrays.asList(context.getResources().getStringArray(R.array.config_certifiedBuildProperties));
+            }
         }
         final boolean was = isGmsAddAccountActivityOnTop();
         final TaskStackListener taskStackListener = new TaskStackListener() {
@@ -347,6 +341,23 @@ public class PropImitationHooks {
                 Integer.toString(Build.VERSION.DEVICE_INITIAL_SDK_INT));
     }
 
+    private static String readFromFile(File file) {
+        StringBuilder content = new StringBuilder();
+
+        if (file.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                String line;
+
+                while ((line = reader.readLine()) != null) {
+                    content.append(line);
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Error reading from file", e);
+            }
+        }
+        return content.toString();
+    }
+
     private static void setSystemProperty(String name, String value) {
         try {
             SystemProperties.set(name, value);
@@ -369,10 +380,6 @@ public class PropImitationHooks {
     }
 
     public static boolean shouldBypassTaskPermission(Context context) {
-        if (sDisableGmsProps) {
-            return false;
-        }
-
         // GMS doesn't have MANAGE_ACTIVITY_TASKS permission
         final int callingUid = Binder.getCallingUid();
         final int gmsUid;
